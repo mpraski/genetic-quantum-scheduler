@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 use crate::genetic_algo::{Chromosome, Config, dependencies, evolve, execution_times, generate_population, initial_waiting_times, topological_sort, visualize_chromsome, visualize_schedule};
 use rand::prelude::*;
+use std::time::{Instant};
+use colored::Colorize;
 
 mod genetic_algo;
 
@@ -28,8 +30,8 @@ fn generate_topological_orders(dependencies: &[(u32, u32)], jobs: u32, n: usize)
 
 fn main() {
     let jobs: u32 = 10_000;
-    let backends: u32 = 500;
-    let dep_count = 500;
+    let backends: u32 = 100;
+    let dep_count = 100;
 
     let execution_times = execution_times(jobs as usize, backends as usize);
     let waiting_times = initial_waiting_times(backends as usize);
@@ -69,6 +71,7 @@ fn main() {
     let mut best_fitness: f32 = 0.0;
     let mut best_fitness_count: u32 = 0;
 
+    let start = Instant::now();
     let population = evolve(generate_population(pop_size, &config), &config, |population: &[Chromosome], generation: i32| -> bool {
         if let Some(best) = population.first() {
             if best_fitness < best.fitness {
@@ -81,10 +84,9 @@ fn main() {
 
         generation == 100 || best_fitness_count == 10
     });
-
+    let duration = start.elapsed().as_secs_f64();
+    println!("Took {}", format!("{:.2} seconds", duration).bold().green());
 
     let schedule = visualize_chromsome(population.first().unwrap(), &config);
     let _visualised = visualize_schedule(&schedule, &config, "out.png");
-
-    println!("Hello, world!");
 }
