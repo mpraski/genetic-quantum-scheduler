@@ -3,6 +3,7 @@ use crate::genetic_algo::{Chromosome, Config, dependencies, evolve, execution_ti
 use rand::prelude::*;
 use std::time::{Instant};
 use colored::Colorize;
+use std::cmp;
 
 mod genetic_algo;
 
@@ -31,12 +32,12 @@ fn generate_topological_orders(dependencies: &[(u32, u32)], jobs: u32, n: usize)
 fn main() {
     let jobs: u32 = 10_000;
     let backends: u32 = 100;
-    let dep_count = 100;
+    let dep_count = 1000;
 
     let execution_times = execution_times(jobs as usize, backends as usize);
     let waiting_times = initial_waiting_times(backends as usize);
     let dependencies = dependencies(jobs as usize, dep_count);
-    let topological_orders = generate_topological_orders(&dependencies, jobs, 100);
+    let topological_orders = generate_topological_orders(&dependencies, jobs, 200);
 
     let mut deps_hash = HashSet::new();
     for &(dep_job, dependent) in dependencies.iter() {
@@ -44,12 +45,12 @@ fn main() {
         deps_hash.insert(dependent);
     }
 
-    let pop_size = 10_000;
-    let sel_size = 2000;
+    let pop_size = cmp::max(50_000, jobs as usize * 3);
+    let sel_size = 2_000;
     let elitism_size = (sel_size as f32 * 0.1).trunc() as usize;
     let selection_size = sel_size - elitism_size;
-    let mutation_pairs = (jobs as f32 * 0.1).trunc() as usize;
-    let mutation_rate = 0.25;
+    let mutation_pairs = (jobs as f32 * 0.15).trunc() as usize;
+    let mutation_rate = 0.15;
 
     let config = Config {
         jobs,
@@ -82,11 +83,12 @@ fn main() {
             }
         }
 
-        generation == 100 || best_fitness_count == 10
+        generation == 200 || best_fitness_count == 20
     });
     let duration = start.elapsed().as_secs_f64();
     println!("Took {}", format!("{:.2} seconds", duration).bold().green());
 
     let schedule = visualize_chromsome(population.first().unwrap(), &config);
-    let _visualised = visualize_schedule(&schedule, &config, "out.png");
+    let _visualised = visualize_schedule(&schedule, &config, false, "out.png");
+    let _visualised = visualize_schedule(&schedule, &config, true, "out-deps.png");
 }

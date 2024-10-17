@@ -178,7 +178,7 @@ impl Chromosome {
             .map(|(index, &makespan)| (index as u32, makespan))
             .collect();
 
-        makespan_indices.sort_by_key(|&(_, makespan)| std::cmp::Reverse(makespan));
+        makespan_indices.sort_unstable_by_key(|&(_, makespan)| std::cmp::Reverse(makespan));
         let top_n_makespan: Vec<u32> = makespan_indices
             .iter()
             .take(config.max_utilized_backends)
@@ -191,7 +191,7 @@ impl Chromosome {
             .map(|(index, &gap_size)| (index as u32, gap_size))
             .collect();
 
-        idle_time_indices.sort_by_key(|&(_, total_idle_time)| std::cmp::Reverse(total_idle_time));
+        idle_time_indices.sort_unstable_by_key(|&(_, total_idle_time)| std::cmp::Reverse(total_idle_time));
         let top_m_idle_time: Vec<u32> = idle_time_indices
             .iter()
             .take(config.max_underutilized_backends)
@@ -410,7 +410,7 @@ fn mutate(mut population: Vec<Chromosome>, config: &Config) -> Vec<Chromosome> {
 
 fn evaluate(mut population: Vec<Chromosome>, config: &Config) -> Vec<Chromosome> {
     population.par_iter_mut().for_each(|chromosome| { chromosome.calculate_fitness(config) });
-    population.sort_by(|a, b| {
+    population.sort_unstable_by(|a, b| {
         b.fitness.partial_cmp(&a.fitness).unwrap_or(Ordering::Equal)
     });
 
@@ -497,6 +497,7 @@ pub fn visualize_chromsome(chromosome: &Chromosome, config: &Config) -> Vec<(u32
 pub fn visualize_schedule(
     schedule: &[(u32, u32, u32, u32)],
     config: &Config,
+    visualize_deps: bool,
     output_path: &str,
 ) -> Result<(), Box<dyn Error>> {
     // Create a drawing area for the chart.
@@ -539,7 +540,16 @@ pub fn visualize_schedule(
 
     // Draw each job as a bar in the chart.
     for &(job, backend, start_time, end_time) in schedule {
-        let color = Palette99::pick(job as usize); // Use different colors for different jobs.
+        let color = if visualize_deps {
+            if config.deps_hash.contains(&job) {
+                RED.to_rgba()
+            } else {
+                Palette99::pick(job as usize).mix(0.25)
+            }
+        } else {
+            Palette99::pick(job as usize).to_rgba()
+        };
+
         chart.draw_series(vec![
             Rectangle::new(
                 [(start_time, backend), (end_time, backend + 1)], // The rectangle spans the time and backend range.
