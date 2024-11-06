@@ -9,3 +9,7 @@ rayon = "1.10.0"
 petgraph = "0.6.5"
 plotters = "0.3.7"
 colored = "2.1.0"
+rand_distr = "0.4.3"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }

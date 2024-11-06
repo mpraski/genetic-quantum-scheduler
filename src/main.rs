@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use crate::genetic_algo::{Chromosome, Config, dependencies, evolve, execution_times, generate_population, initial_waiting_times, topological_sort, visualize_chromsome, visualize_schedule};
+use crate::genetic_algo::{Chromosome, Config, fidelities, dependencies, evolve, execution_times, generate_population, initial_waiting_times, topological_sort, visualize_chromsome, visualize_schedule, evolve_nsga2};
 use rand::prelude::*;
 use std::time::{Instant};
 use colored::Colorize;
@@ -29,11 +29,43 @@ fn generate_topological_orders(dependencies: &[(u32, u32)], jobs: u32, n: usize)
     result
 }
 
-fn main() {
-    let jobs: u32 = 10_000;
-    let backends: u32 = 100;
-    let dep_count = 1000;
+fn test_run(config: &Config, pop_size: usize, nsga2: bool, name: &str) {
+    let chosen_function = if nsga2 {
+        evolve_nsga2
+    } else {
+        evolve
+    };
 
+    let mut best_fitness: f64 = 0.0;
+    let mut best_fitness_count: u32 = 0;
+
+    let start = Instant::now();
+    let population = chosen_function(generate_population(pop_size, &config), &config, |population: &[Chromosome], generation: i32| -> bool {
+        if let Some(best) = population.first() {
+            if best_fitness < best.fitness {
+                best_fitness = best.fitness;
+                best_fitness_count = 0;
+            } else {
+                best_fitness_count += 1;
+            }
+        }
+
+        generation == 200 || best_fitness_count == 20
+    });
+    let duration = start.elapsed().as_secs_f64();
+    println!("{}: Took {}", name, format!("{:.2} seconds", duration).bold().green());
+
+    let schedule = visualize_chromsome(population.first().unwrap(), &config);
+    let _visualised = visualize_schedule(&schedule, &config, false, &format!("out-{}.png", name));
+    let _visualised = visualize_schedule(&schedule, &config, true, &format!("out-{}-deps.png", name));
+}
+
+fn main() {
+    let jobs: u32 = 10_000; // 1,000 - 20,000
+    let backends: u32 = 100; // 16, 32, 64, 128
+    let dep_count = 100; // to-do, 10-20% of jobs
+
+    let fidels = fidelities(jobs as usize, backends as usize);
     let execution_times = execution_times(jobs as usize, backends as usize);
     let waiting_times = initial_waiting_times(backends as usize);
     let dependencies = dependencies(jobs as usize, dep_count);
@@ -56,6 +88,7 @@ fn main() {
         jobs,
         backends,
         deps_hash,
+        fidelities: fidels,
         dependencies,
         waiting_times,
         execution_times,
@@ -67,28 +100,10 @@ fn main() {
         gap_threshold: 10,
         max_utilized_backends: (jobs as f32 * 0.05).trunc() as usize,
         max_underutilized_backends: (jobs as f32 * 0.15).trunc() as usize,
+        makespan_weight: 0.5,
+        fidelity_weight: 0.5,
     };
 
-    let mut best_fitness: f32 = 0.0;
-    let mut best_fitness_count: u32 = 0;
-
-    let start = Instant::now();
-    let population = evolve(generate_population(pop_size, &config), &config, |population: &[Chromosome], generation: i32| -> bool {
-        if let Some(best) = population.first() {
-            if best_fitness < best.fitness {
-                best_fitness = best.fitness;
-                best_fitness_count = 0;
-            } else {
-                best_fitness_count += 1;
-            }
-        }
-
-        generation == 200 || best_fitness_count == 20
-    });
-    let duration = start.elapsed().as_secs_f64();
-    println!("Took {}", format!("{:.2} seconds", duration).bold().green());
-
-    let schedule = visualize_chromsome(population.first().unwrap(), &config);
-    let _visualised = visualize_schedule(&schedule, &config, false, "out.png");
-    let _visualised = visualize_schedule(&schedule, &config, true, "out-deps.png");
+    test_run(&config, pop_size, false, "vanilla");
+    test_run(&config, pop_size, false, "nsga2");
 }
