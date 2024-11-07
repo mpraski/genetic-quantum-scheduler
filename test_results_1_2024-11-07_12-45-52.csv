@@ -1,0 +1,2 @@
+nsga2,jobs,backends,population_size,elitism_size,selection_size,mutation_rate,mutation_pairs,gap_threshold,max_utilized_backends,max_underutilized_backends,makespan_weight,fidelity_weight,mean_fitness,mean_makespan,mean_fidelity,mean_runtime,mean_generations
+false,1000,16,50000,500,4500,0.0,0,10,50,150,0.5,0.5,0.3375088278443522,1272,0.6742286422952497,10.2464321042,200

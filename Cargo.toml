@@ -10,6 +10,10 @@ petgraph = "0.6.5"
 plotters = "0.3.7"
 colored = "2.1.0"
 rand_distr = "0.4.3"
+itertools = "0.13.0"
+serde = { version = "1.0.214", features = ["derive"] }
+csv = "1.3.0"
+chrono = "0.4.38"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
