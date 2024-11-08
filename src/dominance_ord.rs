@@ -1,5 +1,5 @@
 use std::cmp::Ordering;
-use crate::genetic_algo::{Chromosome};
+use crate::genetic_algo::{ScheduleChromosome};
 use crate::nsga2::MultiObjective;
 
 pub trait DominanceOrd {
@@ -61,8 +61,8 @@ where
 }
 
 
-impl DominanceOrd for Chromosome {
-    type T = Chromosome;
+impl DominanceOrd for ScheduleChromosome {
+    type T = ScheduleChromosome;
 
     fn dominance_ord(&self, a: &Self::T, b: &Self::T) -> Ordering {
         if a.makespan < b.makespan && a.mean_fidelity >= b.mean_fidelity {

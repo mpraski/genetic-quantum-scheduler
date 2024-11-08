@@ -2,22 +2,17 @@ use std::cmp::Ordering;
 use crate::dominance_ord::DominanceOrd;
 use crate::nsga2::MultiObjective;
 
-type SolutionIdx = usize;
-
 #[derive(Debug, Clone)]
 pub struct Front<'s, S: 's> {
-    dominated_solutions: Vec<Vec<SolutionIdx>>,
+    dominated_solutions: Vec<Vec<usize>>,
     domination_count: Vec<usize>,
-    previous_front: Vec<SolutionIdx>,
-    current_front: Vec<SolutionIdx>,
+    previous_front: Vec<usize>,
+    current_front: Vec<usize>,
     rank: usize,
     solutions: &'s [S],
 }
 
-pub struct AssignedCrowdingDistance<'a, S>
-where
-    S: 'a,
-{
+pub struct AssignedCrowdingDistance<'a, S: 'a> {
     pub solution: &'a S,
     pub rank: usize,
     pub crowding_distance: f64,
@@ -62,7 +57,7 @@ impl<'f, 's: 'f, S: 's> Front<'s, S> {
 
 pub struct FrontElemIter<'f, 's: 'f, S: 's> {
     front: &'f Front<'s, S>,
-    next_idx: SolutionIdx,
+    next_idx: usize,
 }
 
 impl<'f, 's: 'f, S: 's> Iterator for FrontElemIter<'f, 's, S> {
@@ -81,15 +76,10 @@ impl<'f, 's: 'f, S: 's> Iterator for FrontElemIter<'f, 's, S> {
 
 /// Perform a non-dominated sort of `solutions`. Returns the first
 /// Pareto front.
-pub fn non_dominated_sort<'s, S, D>(solutions: &'s [S], domination: &D) -> Front<'s, S>
-where
-    D: DominanceOrd<T=S>,
-{
-    let mut dominated_solutions: Vec<Vec<SolutionIdx>> =
-        solutions.iter().map(|_| Vec::new()).collect();
-
+pub fn non_dominated_sort<'s, S: 's, D: DominanceOrd<T=S>>(solutions: &'s [S], domination: &D) -> Front<'s, S> {
+    let mut dominated_solutions: Vec<Vec<usize>> = solutions.iter().map(|_| Vec::new()).collect();
     let mut domination_count: Vec<usize> = solutions.iter().map(|_| 0).collect();
-    let mut current_front: Vec<SolutionIdx> = Vec::new();
+    let mut current_front = Vec::new();
 
     let mut iter = solutions.iter().enumerate();
     while let Some((p_i, p)) = iter.next() {
@@ -130,17 +120,16 @@ where
     }
 }
 
-pub fn assign_crowding_distance<'a, S>(
+pub fn assign_crowding_distance<'a, S: 'a>(
     front: &Front<'a, S>,
     multi_objective: &MultiObjective<S, f64>,
 ) -> Vec<AssignedCrowdingDistance<'a, S>> {
     let mut a: Vec<_> = front
         .solutions
         .iter()
-        .enumerate()
-        .map(|(i, s)| AssignedCrowdingDistance {
-            solution: s,
+        .map(|s| AssignedCrowdingDistance {
             rank: front.rank,
+            solution: s,
             crowding_distance: 0.0,
         })
         .collect();

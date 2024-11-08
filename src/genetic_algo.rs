@@ -6,7 +6,6 @@ use std::cmp::Ordering;
 use plotters::prelude::*;
 use std::error::Error;
 use plotters::style::full_palette::GREY;
-use colored::Colorize;
 
 #[derive(Clone, Debug, Default)]
 pub struct Config {
@@ -31,8 +30,16 @@ pub struct Config {
     pub fidelity_weight: f64,
 }
 
+pub trait Chromosome: Sized + Send + Sync + Clone + std::fmt::Debug {
+    fn new(config: &Config) -> Self;
+    fn calculate_fitness(&mut self, config: &Config);
+    fn mutate(&mut self, config: &Config);
+    fn fitness(&self) -> f64;
+    fn order(&self) -> usize;
+}
+
 #[derive(Clone, Debug, Default)]
-pub struct Chromosome {
+pub struct ScheduleChromosome {
     pub genes: Vec<(u32, u32)>,
     pub order: usize,
     pub fitness: f64,
@@ -40,8 +47,8 @@ pub struct Chromosome {
     pub mean_fidelity: f64,
 }
 
-impl Chromosome {
-    pub fn new(config: &Config) -> Self {
+impl Chromosome for ScheduleChromosome {
+    fn new(config: &Config) -> Self {
         let mut rng = thread_rng();
         let order = (0..config.topological_orders.len()).choose(&mut rng).unwrap();
         let range = Uniform::new(0, config.backends);
@@ -56,7 +63,7 @@ impl Chromosome {
         Self { genes, order, ..Default::default() }
     }
 
-    pub fn calculate_fitness(&mut self, config: &Config) {
+    fn calculate_fitness(&mut self, config: &Config) {
         let mut acc_fidelity: f64 = 0.0;
         let mut max_makespan: u32 = 0;
         let mut job_end_times: HashMap<u32, u32> = HashMap::with_capacity(config.dependencies.len());
@@ -235,16 +242,24 @@ impl Chromosome {
             }
         }
     }
+
+    fn fitness(&self) -> f64 {
+        self.fitness
+    }
+
+    fn order(&self) -> usize {
+        self.order
+    }
 }
 
-pub fn generate_population(config: &Config) -> Vec<Chromosome> {
+pub fn generate_population<C: Chromosome>(config: &Config) -> Vec<C> {
     (0..config.population_size)
         .into_par_iter()
         .map(|_| { Chromosome::new(config) })
         .collect()
 }
 
-fn perform_single_point_crossover(parent_1: &Chromosome, parent_2: &Chromosome, config: &Config) -> (Chromosome, Chromosome) {
+fn perform_single_point_crossover(parent_1: &ScheduleChromosome, parent_2: &ScheduleChromosome, config: &Config) -> (ScheduleChromosome, ScheduleChromosome) {
     let crossover_point = thread_rng().gen_range(0..config.jobs as usize);
 
     let mut genes_1 = Vec::with_capacity(config.jobs as usize);
@@ -256,12 +271,12 @@ fn perform_single_point_crossover(parent_1: &Chromosome, parent_2: &Chromosome, 
     genes_2.extend_from_slice(&parent_1.genes[crossover_point..]);
 
     (
-        Chromosome { genes: genes_1, order: parent_1.order, ..Default::default() },
-        Chromosome { genes: genes_2, order: parent_2.order, ..Default::default() },
+        ScheduleChromosome { genes: genes_1, order: parent_1.order, ..Default::default() },
+        ScheduleChromosome { genes: genes_2, order: parent_2.order, ..Default::default() },
     )
 }
 
-fn perform_two_point_crossover(parent_1: &Chromosome, parent_2: &Chromosome, config: &Config) -> (Chromosome, Chromosome) {
+fn perform_two_point_crossover(parent_1: &ScheduleChromosome, parent_2: &ScheduleChromosome, config: &Config) -> (ScheduleChromosome, ScheduleChromosome) {
     let mut rng = thread_rng();
 
     let crossover_point_1 = rng.gen_range(0..config.jobs as usize);
@@ -278,27 +293,27 @@ fn perform_two_point_crossover(parent_1: &Chromosome, parent_2: &Chromosome, con
     genes_2.extend_from_slice(&parent_2.genes[crossover_point_2..]);
 
     (
-        Chromosome { genes: genes_1, order: parent_1.order, ..Default::default() },
-        Chromosome { genes: genes_2, order: parent_2.order, ..Default::default() },
+        ScheduleChromosome { genes: genes_1, order: parent_1.order, ..Default::default() },
+        ScheduleChromosome { genes: genes_2, order: parent_2.order, ..Default::default() },
     )
 }
 
-pub(crate) fn natural_selection(chromosomes: &[Chromosome], n: usize) -> Vec<Chromosome> {
-    chromosomes[..std::cmp::min(n, chromosomes.len())].to_vec()
+pub fn natural_selection<C: Chromosome>(chromosomes: &[C], n: usize) -> &[C] {
+    &chromosomes[..std::cmp::min(n, chromosomes.len())]
 }
 
-fn roulette_selection(chromosomes: &[Chromosome], n: usize) -> Vec<Chromosome> {
+pub fn roulette_selection<C: Chromosome>(chromosomes: &[C], n: usize) -> Vec<C> {
     let mut rng = thread_rng();
-    let mut selected: Vec<Chromosome> = Vec::with_capacity(n);
+    let mut selected: Vec<C> = Vec::with_capacity(n);
 
-    let sum_fitness: f64 = chromosomes.iter().map(|x| x.fitness).sum();
+    let sum_fitness: f64 = chromosomes.iter().map(|x| x.fitness()).sum();
 
     for _ in 0..n {
         let u = rng.gen::<f64>() * sum_fitness;
 
         let mut sum = 0.0;
         for x in chromosomes.iter() {
-            sum += x.fitness;
+            sum += x.fitness();
             if sum >= u {
                 selected.push(x.clone());
                 break;
@@ -311,18 +326,18 @@ fn roulette_selection(chromosomes: &[Chromosome], n: usize) -> Vec<Chromosome> {
     selected
 }
 
-pub(crate) fn crossover(chromosomes: &[Chromosome], config: &Config) -> Vec<Chromosome> {
-    let mut groups: HashMap<usize, Vec<&Chromosome>> = HashMap::new();
+pub fn crossover<C: Chromosome>(chromosomes: &[C], config: &Config) -> Vec<C> {
+    let mut groups: HashMap<usize, Vec<C>> = HashMap::new();
 
     for chromosome in chromosomes.iter() {
         groups
-            .entry(chromosome.order)
+            .entry(chromosome.order())
             .or_insert_with(Vec::new)
-            .push(chromosome);
+            .push(chromosome.clone());
     }
 
     groups
-        .into_par_iter() // Parallel iteration over the groups.
+        .into_par_iter()
         .flat_map(|(_, group)| {
             group
                 .par_chunks_exact(2)
@@ -331,46 +346,30 @@ pub(crate) fn crossover(chromosomes: &[Chromosome], config: &Config) -> Vec<Chro
                     let (c1, c2) = perform_two_point_crossover(p1, p2, config);
                     vec![c1, c2]
                 })
-                .collect::<Vec<Chromosome>>() // Collect the offspring for this group.
+                .collect::<Vec<ScheduleChromosome>>() // Collect the offspring for this group.
         })
         .collect()
 }
 
-pub(crate) fn mutate(mut population: Vec<Chromosome>, config: &Config) -> Vec<Chromosome> {
+pub fn mutate<C: Chromosome>(mut population: Vec<C>, config: &Config) -> Vec<C> {
     population.par_iter_mut().for_each(|chromosome| { chromosome.mutate(config) });
     population
 }
 
-fn evaluate(mut population: Vec<Chromosome>, config: &Config) -> Vec<Chromosome> {
+pub fn evaluate<C: Chromosome>(mut population: Vec<C>, config: &Config) -> Vec<C> {
     population.par_iter_mut().for_each(|chromosome| { chromosome.calculate_fitness(config) });
     population.sort_unstable_by(|a, b| {
-        b.fitness.partial_cmp(&a.fitness).unwrap_or(Ordering::Equal)
+        b.fitness().partial_cmp(&a.fitness()).unwrap_or(Ordering::Equal)
     });
 
     population
 }
 
-pub fn evolve(mut population: Vec<Chromosome>, config: &Config, mut terminate: impl FnMut(&[Chromosome], i32) -> bool) -> Vec<Chromosome> {
+pub fn evolve<C: Chromosome>(mut population: Vec<C>, config: &Config, mut terminate: impl FnMut(&[C], i32) -> bool) -> Vec<C> {
     let mut generation = 0;
 
     loop {
         population = evaluate(population, config);
-
-        let mut groups: HashSet<usize> = HashSet::new();
-        for chromosome in population.iter() {
-            groups.insert(chromosome.order);
-        }
-
-        if let Some(best) = population.first() {
-            println!(
-                "{} - Best fitness: {:.8}, makespan: {}, mean fidelity: {}, groups: {}",
-                format!("Generation {:3}", generation).bold().red(),
-                best.fitness,
-                best.makespan,
-                best.mean_fidelity,
-                groups.len(),
-            );
-        }
 
         if terminate(&population, generation) {
             break;
@@ -378,7 +377,7 @@ pub fn evolve(mut population: Vec<Chromosome>, config: &Config, mut terminate: i
 
         let selected = natural_selection(&population, config.selection_size);
         let elites = population[0..config.elitism_size].to_vec();
-        let children = crossover(&selected, config);
+        let children = crossover(selected, config);
         let mutated_children = mutate(children, config);
 
         population = elites;
@@ -390,7 +389,7 @@ pub fn evolve(mut population: Vec<Chromosome>, config: &Config, mut terminate: i
     population
 }
 
-pub fn visualize_chromsome(chromosome: &Chromosome, config: &Config) -> Vec<(u32, u32, u32, u32)> {
+pub fn visualize_chromsome(chromosome: &ScheduleChromosome, config: &Config) -> Vec<(u32, u32, u32, u32)> {
     let mut schedule: Vec<(u32, u32, u32, u32)> = Vec::with_capacity(config.jobs as usize);
     let mut job_end_times: Vec<u32> = vec![0; config.jobs as usize];
     let mut last_end_times: Vec<u32> = vec![0; config.backends as usize];

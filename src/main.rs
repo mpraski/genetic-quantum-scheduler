@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use crate::genetic_algo::{Chromosome, Config, evolve, generate_population, visualize_chromsome, visualize_schedule};
+use crate::genetic_algo::{Chromosome, Config, evolve, generate_population, visualize_chromsome, visualize_schedule, ScheduleChromosome};
 use rand::prelude::*;
 use std::time::{Instant};
 use colored::Colorize;
@@ -15,7 +15,7 @@ use crate::nsga2::evolve_nsga2;
 
 mod genetic_algo;
 mod dominance_ord;
-mod fast_nondominating_sort;
+mod non_dominated_sort;
 mod demo_data;
 mod nsga2;
 
@@ -59,16 +59,16 @@ pub struct FinalTestResult {
 }
 
 #[derive(Debug)]
-pub struct TestResult {
+pub struct TestResult<C: Chromosome> {
     config: Config,
-    runs: Vec<RunResult>,
+    runs: Vec<RunResult<C>>,
 }
 
 #[derive(Debug)]
-pub struct RunResult {
+pub struct RunResult<C: Chromosome> {
     runtime: f64,
     generations: usize,
-    best_specimen: Chromosome,
+    best_specimen: C,
 }
 
 const REPETITIONS: i32 = 1;
@@ -185,7 +185,7 @@ fn collect_benchmarks(schema: &TestSchema) -> Vec<FinalTestResult> {
     results
 }
 
-fn benchmark_run(config: &Config) -> RunResult {
+fn benchmark_run(config: &Config) -> RunResult<ScheduleChromosome> {
     let chosen_function = if config.nsga2 {
         evolve_nsga2
     } else {
@@ -199,8 +199,8 @@ fn benchmark_run(config: &Config) -> RunResult {
     let start = Instant::now();
     let population = chosen_function(generate_population(&config), &config, |population: &[Chromosome], generation: i32| -> bool {
         if let Some(best) = population.first() {
-            if best_fitness < best.fitness {
-                best_fitness = best.fitness;
+            if best_fitness < best.fitness() {
+                best_fitness = best.fitness();
                 best_fitness_count = 0;
             } else {
                 best_fitness_count += 1;

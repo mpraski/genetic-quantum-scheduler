@@ -1,11 +1,10 @@
 use std::cmp::Ordering;
-use std::collections::HashSet;
 use std::marker::PhantomData;
 use colored::Colorize;
 use rayon::iter::IntoParallelRefMutIterator;
 use rayon::prelude::*;
-use crate::fast_nondominating_sort::{assign_crowding_distance, non_dominated_sort, AssignedCrowdingDistance};
-use crate::genetic_algo::{Chromosome, Config};
+use crate::non_dominated_sort::{assign_crowding_distance, non_dominated_sort, AssignedCrowdingDistance};
+use crate::genetic_algo::{Chromosome, Config, ScheduleChromosome};
 
 pub trait Objective {
     type Solution;
@@ -46,7 +45,7 @@ struct MakespanObjective;
 struct MeanFidelityObjective;
 
 impl Objective for MakespanObjective {
-    type Solution = Chromosome;
+    type Solution = ScheduleChromosome;
     type Distance = f64;
 
     fn total_order(&self, a: &Self::Solution, b: &Self::Solution) -> Ordering {
@@ -59,7 +58,7 @@ impl Objective for MakespanObjective {
 }
 
 impl Objective for MeanFidelityObjective {
-    type Solution = Chromosome;
+    type Solution = ScheduleChromosome;
     type Distance = f64;
 
     fn total_order(&self, a: &Self::Solution, b: &Self::Solution) -> Ordering {
@@ -120,12 +119,12 @@ fn select_and_rank<'a, S: 'a>(
     result
 }
 
-fn evaluate_only(mut population: Vec<Chromosome>, config: &Config) -> Vec<Chromosome> {
+fn evaluate_only<C: Chromosome>(mut population: Vec<C>, config: &Config) -> Vec<C> {
     population.par_iter_mut().for_each(|chromosome| { chromosome.calculate_fitness(config) });
     population
 }
 
-pub fn evolve_nsga2(mut population: Vec<Chromosome>, config: &Config, mut terminate: impl FnMut(&[Chromosome], i32) -> bool) -> Vec<Chromosome> {
+pub fn evolve_nsga2<C: Chromosome>(mut population: Vec<C>, config: &Config, mut terminate: impl FnMut(&[C], i32) -> bool) -> Vec<C> {
     let mut generation = 0;
     let mo = MultiObjective::new(&[&MakespanObjective, &MeanFidelityObjective]);
 
@@ -143,22 +142,6 @@ pub fn evolve_nsga2(mut population: Vec<Chromosome>, config: &Config, mut termin
         });
 
         population = ranked_population.iter().map(|i| i.solution.clone()).collect();
-
-        let mut groups: HashSet<usize> = HashSet::new();
-        for chromosome in population.iter() {
-            groups.insert(chromosome.order);
-        }
-
-        if let Some(best) = population.first() {
-            println!(
-                "{} - Best fitness: {:.8}, makespan: {}, mean fidelity: {}, groups: {}",
-                format!("Generation {:3}", generation).bold().red(),
-                best.fitness,
-                best.makespan,
-                best.mean_fidelity,
-                groups.len(),
-            );
-        }
 
         if terminate(&population, generation) {
             break;
