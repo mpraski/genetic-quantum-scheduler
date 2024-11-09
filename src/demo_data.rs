@@ -1,9 +1,9 @@
-use std::collections::HashMap;
 use petgraph::algo::toposort;
 use petgraph::graph::{DiGraph, NodeIndex};
-use rand::{thread_rng, Rng};
 use rand::prelude::SliceRandom;
-use rand_distr::{Normal, Distribution};
+use rand::{thread_rng, Rng};
+use rand_distr::{Distribution, Normal};
+use std::collections::HashMap;
 
 pub fn execution_times(jobs: usize, backends: usize) -> Vec<u32> {
     (0..jobs)
@@ -69,7 +69,9 @@ pub fn topological_sort(jobs: &[u32], dependencies: &[(u32, u32)]) -> Option<Vec
     let data = prepare(jobs, dependencies);
 
     for &(job, ref deps) in data.iter() {
-        let job_index = *job_indices.entry(job).or_insert_with(|| graph.add_node(job));
+        let job_index = *job_indices
+            .entry(job)
+            .or_insert_with(|| graph.add_node(job));
 
         for &dep in deps {
             add_dependency(&mut graph, &mut job_indices, job_index, dep);
@@ -89,7 +91,9 @@ fn add_dependency(
     dep: u32,
 ) {
     // Add the dependency node if it does not exist
-    let dep_index = *job_indices.entry(dep).or_insert_with(|| graph.add_node(dep));
+    let dep_index = *job_indices
+        .entry(dep)
+        .or_insert_with(|| graph.add_node(dep));
 
     // Add an edge from the dependency to the job
     graph.add_edge(dep_index, job_index, ());

@@ -1,6 +1,6 @@
-use std::cmp::Ordering;
 use crate::dominance_ord::DominanceOrd;
-use crate::nsga2::MultiObjective;
+use crate::nsga2_optimizer::MultiObjective;
+use std::cmp::Ordering;
 
 #[derive(Debug, Clone)]
 pub struct Front<'s, S: 's> {
@@ -76,7 +76,10 @@ impl<'f, 's: 'f, S: 's> Iterator for FrontElemIter<'f, 's, S> {
 
 /// Perform a non-dominated sort of `solutions`. Returns the first
 /// Pareto front.
-pub fn non_dominated_sort<'s, S: 's, D: DominanceOrd<T=S>>(solutions: &'s [S], domination: &D) -> Front<'s, S> {
+pub fn non_dominated_sort<'s, S: 's, D: DominanceOrd<T = S>>(
+    solutions: &'s [S],
+    domination: &D,
+) -> Front<'s, S> {
     let mut dominated_solutions: Vec<Vec<usize>> = solutions.iter().map(|_| Vec::new()).collect();
     let mut domination_count: Vec<usize> = solutions.iter().map(|_| 0).collect();
     let mut current_front = Vec::new();
@@ -134,41 +137,38 @@ pub fn assign_crowding_distance<'a, S: 'a>(
         })
         .collect();
 
-    multi_objective
-        .objectives
-        .iter()
-        .for_each(|objective| {
-            // First, sort according to objective
-            a.sort_by(|a, b| objective.total_order(a.solution, b.solution));
+    multi_objective.objectives.iter().for_each(|objective| {
+        // First, sort according to objective
+        a.sort_by(|a, b| objective.total_order(a.solution, b.solution));
 
-            // Assign infinite crowding distance to the extremes
-            {
-                a.first_mut().unwrap().crowding_distance = f64::INFINITY;
-                a.last_mut().unwrap().crowding_distance = f64::INFINITY;
+        // Assign infinite crowding distance to the extremes
+        {
+            a.first_mut().unwrap().crowding_distance = f64::INFINITY;
+            a.last_mut().unwrap().crowding_distance = f64::INFINITY;
+        }
+
+        // The distance between the "best" and "worst" solution
+        // according to "objective".
+        let spread = objective
+            .distance(a.first().unwrap().solution, a.last().unwrap().solution)
+            .abs();
+        debug_assert!(spread >= 0.0);
+
+        if spread > 0.0 {
+            let norm = 1.0 / (spread * (multi_objective.objectives.len() as f64));
+            debug_assert!(norm > 0.0);
+
+            for i in 1..a.len() - 1 {
+                debug_assert!(i >= 1 && i + 1 < a.len());
+
+                let distance = objective
+                    .distance(a[i + 1].solution, a[i - 1].solution)
+                    .abs();
+                debug_assert!(distance >= 0.0);
+                a[i].crowding_distance += distance * norm;
             }
-
-            // The distance between the "best" and "worst" solution
-            // according to "objective".
-            let spread = objective
-                .distance(a.first().unwrap().solution, a.last().unwrap().solution)
-                .abs();
-            debug_assert!(spread >= 0.0);
-
-            if spread > 0.0 {
-                let norm = 1.0 / (spread * (multi_objective.objectives.len() as f64));
-                debug_assert!(norm > 0.0);
-
-                for i in 1..a.len() - 1 {
-                    debug_assert!(i >= 1 && i + 1 < a.len());
-
-                    let distance = objective
-                        .distance(a[i + 1].solution, a[i - 1].solution)
-                        .abs();
-                    debug_assert!(distance >= 0.0);
-                    a[i].crowding_distance += distance * norm;
-                }
-            }
-        });
+        }
+    });
 
     a
 }

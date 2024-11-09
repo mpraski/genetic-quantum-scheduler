@@ -1,6 +1,5 @@
+use crate::nsga2_optimizer::MultiObjective;
 use std::cmp::Ordering;
-use crate::genetic_algo::{ScheduleChromosome};
-use crate::nsga2::MultiObjective;
 
 pub trait DominanceOrd {
     /// The type on which the dominance relation is defined.
@@ -55,25 +54,6 @@ where
             Ordering::Greater
         } else {
             debug_assert!((less_cnt > 0 && greater_cnt > 0) || (less_cnt == 0 && greater_cnt == 0));
-            Ordering::Equal
-        }
-    }
-}
-
-
-impl DominanceOrd for ScheduleChromosome {
-    type T = ScheduleChromosome;
-
-    fn dominance_ord(&self, a: &Self::T, b: &Self::T) -> Ordering {
-        if a.makespan < b.makespan && a.mean_fidelity >= b.mean_fidelity {
-            Ordering::Less
-        } else if a.makespan <= b.makespan && a.mean_fidelity > b.mean_fidelity {
-            Ordering::Less
-        } else if a.makespan > b.makespan && a.mean_fidelity <= b.mean_fidelity {
-            Ordering::Greater
-        } else if a.makespan >= b.makespan && a.mean_fidelity < b.mean_fidelity {
-            Ordering::Greater
-        } else {
             Ordering::Equal
         }
     }

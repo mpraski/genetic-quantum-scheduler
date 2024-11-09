@@ -1,10 +1,15 @@
+use crate::genetic_algorithm::{Algorithm, Evaluator, Optimizer};
+use crate::non_dominated_sort::{
+    assign_crowding_distance, non_dominated_sort, AssignedCrowdingDistance,
+};
+use crate::scheduling_optimizer::{Config, ScheduleChromosome};
 use std::cmp::Ordering;
 use std::marker::PhantomData;
-use colored::Colorize;
-use rayon::iter::IntoParallelRefMutIterator;
-use rayon::prelude::*;
-use crate::non_dominated_sort::{assign_crowding_distance, non_dominated_sort, AssignedCrowdingDistance};
-use crate::genetic_algo::{Chromosome, Config, ScheduleChromosome};
+
+#[derive(Debug)]
+pub struct NSGA2Optimizer {
+    pub algorithm: Box<dyn Algorithm<Config, ScheduleChromosome>>,
+}
 
 pub trait Objective {
     type Solution;
@@ -16,13 +21,12 @@ pub trait Objective {
     fn distance(&self, a: &Self::Solution, b: &Self::Solution) -> Self::Distance;
 }
 
-
 pub struct MultiObjective<'a, S, D>
 where
     S: 'a,
     D: 'a,
 {
-    pub objectives: &'a [&'a dyn Objective<Solution=S, Distance=D>],
+    pub objectives: &'a [&'a dyn Objective<Solution = S, Distance = D>],
     _solution: PhantomData<S>,
     _distance: PhantomData<D>,
 }
@@ -32,7 +36,7 @@ where
     S: 'a,
     D: 'a,
 {
-    pub fn new(objectives: &'a [&'a dyn Objective<Solution=S, Distance=D>]) -> Self {
+    pub fn new(objectives: &'a [&'a dyn Objective<Solution = S, Distance = D>]) -> Self {
         Self {
             objectives,
             _solution: PhantomData,
@@ -113,50 +117,54 @@ fn select_and_rank<'a, S: 'a>(
         front = front.next_front();
     }
 
-
     debug_assert_eq!(n, result.len());
 
     result
 }
 
-fn evaluate_only<C: Chromosome>(mut population: Vec<C>, config: &Config) -> Vec<C> {
-    population.par_iter_mut().for_each(|chromosome| { chromosome.calculate_fitness(config) });
-    population
-}
+impl Optimizer<ScheduleChromosome> for NSGA2Optimizer {
+    fn optimize(
+        &mut self,
+        mut eval: Box<dyn Evaluator<ScheduleChromosome>>,
+    ) -> Vec<ScheduleChromosome> {
+        let mut generation = 0;
+        let mut population: Vec<ScheduleChromosome> = self.algorithm.generate();
+        let mo = MultiObjective::new(&[&MakespanObjective, &MeanFidelityObjective]);
 
-pub fn evolve_nsga2<C: Chromosome>(mut population: Vec<C>, config: &Config, mut terminate: impl FnMut(&[C], i32) -> bool) -> Vec<C> {
-    let mut generation = 0;
-    let mo = MultiObjective::new(&[&MakespanObjective, &MeanFidelityObjective]);
+        loop {
+            population = self.algorithm.evaluate_only(population);
 
-    loop {
-        population = evaluate_only(population, config);
+            let mut ranked_population =
+                select_and_rank(&population, self.algorithm.meta().selection_size, &mo);
+            ranked_population.sort_unstable_by(|a, b| {
+                a.rank.cmp(&b.rank).then_with(|| {
+                    a.crowding_distance
+                        .partial_cmp(&b.crowding_distance)
+                        .unwrap()
+                        .reverse()
+                })
+            });
 
-        let mut ranked_population = select_and_rank(&population, config.selection_size, &mo);
-        ranked_population.sort_unstable_by(|a, b| {
-            a.rank.cmp(&b.rank).then_with(|| {
-                a.crowding_distance
-                    .partial_cmp(&b.crowding_distance)
-                    .unwrap()
-                    .reverse()
-            })
-        });
+            population = ranked_population
+                .iter()
+                .map(|i| i.solution.clone())
+                .collect();
 
-        population = ranked_population.iter().map(|i| i.solution.clone()).collect();
+            if eval.can_terminate(&population, generation) {
+                break;
+            }
 
-        if terminate(&population, generation) {
-            break;
+            let selected = self.algorithm.select(&population);
+            let elites = self.algorithm.elitism(&population);
+            let children = self.algorithm.crossover(&selected);
+            let mutated_children = self.algorithm.mutate(children);
+
+            population = elites;
+            population.extend(mutated_children);
+
+            generation += 1;
         }
 
-        let selected = crate::genetic_algo::natural_selection(&population, config.selection_size);
-        let elites = population[0..config.elitism_size].to_vec();
-        let children = crate::genetic_algo::crossover(&selected, config);
-        let mutated_children = crate::genetic_algo::mutate(children, config);
-
-        population = elites;
-        population.extend(mutated_children);
-
-        generation += 1;
+        population
     }
-
-    population
 }

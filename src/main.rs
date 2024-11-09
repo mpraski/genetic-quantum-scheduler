@@ -1,23 +1,29 @@
-use std::collections::HashSet;
-use crate::genetic_algo::{Chromosome, Config, evolve, generate_population, visualize_chromsome, visualize_schedule, ScheduleChromosome};
-use rand::prelude::*;
-use std::time::{Instant};
-use colored::Colorize;
-use std::cmp;
-use std::error::Error;
-use std::fs::File;
+use crate::demo_data::{
+    dependencies, execution_times, fidelities, initial_waiting_times, topological_sort,
+};
+use crate::genetic_algorithm::{Chromosome, Optimizer};
+use crate::nsga2_optimizer::NSGA2Optimizer;
+use crate::scheduling_optimizer::{
+    Config, GeneticOptimizer, ScheduleChromosome, SchedulingAlgorithm, SchedulingEvaluator,
+};
+use chrono::Local;
 use csv::Writer;
 use itertools::iproduct;
+use rand::prelude::*;
 use serde::Serialize;
-use chrono::Local;
-use crate::demo_data::{dependencies, execution_times, fidelities, initial_waiting_times, topological_sort};
-use crate::nsga2::evolve_nsga2;
+use std::cmp;
+use std::collections::HashSet;
+use std::error::Error;
+use std::fs::File;
+use std::time::Instant;
 
-mod genetic_algo;
-mod dominance_ord;
-mod non_dominated_sort;
 mod demo_data;
-mod nsga2;
+mod dominance_ord;
+mod genetic_algorithm;
+mod non_dominated_sort;
+mod nsga2_optimizer;
+mod scheduling_optimizer;
+mod visualization;
 
 #[derive(Debug)]
 pub struct TestSchema {
@@ -59,12 +65,6 @@ pub struct FinalTestResult {
 }
 
 #[derive(Debug)]
-pub struct TestResult<C: Chromosome> {
-    config: Config,
-    runs: Vec<RunResult<C>>,
-}
-
-#[derive(Debug)]
 pub struct RunResult<C: Chromosome> {
     runtime: f64,
     generations: usize,
@@ -88,18 +88,25 @@ pub fn write_to_csv(records: &[FinalTestResult], filename: &str) -> Result<(), B
 fn collect_benchmarks(schema: &TestSchema) -> Vec<FinalTestResult> {
     let mut results = Vec::new();
 
-    for (&nsga2, &jobs, &backends, &selection_size_p, &elitism_size_p, &mutation_pairs_p, &mutation_rate_p, &dependency) in
-        iproduct!(
-                &schema.nsga2,
-                &schema.jobs,
-                &schema.backends,
-                &schema.selection_size_percentage,
-                &schema.elitism_size_percentage,
-                &schema.mutation_pairs_percentage,
-                &schema.mutation_rate_percentage,
-                &schema.dependency_percentage
-            )
-    {
+    for (
+        &nsga2,
+        &jobs,
+        &backends,
+        &selection_size_p,
+        &elitism_size_p,
+        &mutation_pairs_p,
+        &mutation_rate_p,
+        &dependency,
+    ) in iproduct!(
+        &schema.nsga2,
+        &schema.jobs,
+        &schema.backends,
+        &schema.selection_size_percentage,
+        &schema.elitism_size_percentage,
+        &schema.mutation_pairs_percentage,
+        &schema.mutation_rate_percentage,
+        &schema.dependency_percentage
+    ) {
         if results.len() > 50 {
             break;
         }
@@ -144,9 +151,18 @@ fn collect_benchmarks(schema: &TestSchema) -> Vec<FinalTestResult> {
             fidelity_weight: 0.5,
         };
 
+        let algorithm = Box::new(SchedulingAlgorithm {
+            config: config.clone(),
+        });
+        let mut optimizer: Box<dyn Optimizer<ScheduleChromosome>> = if nsga2 {
+            Box::new(NSGA2Optimizer { algorithm })
+        } else {
+            Box::new(GeneticOptimizer { algorithm })
+        };
+
         let mut runs = Vec::with_capacity(REPETITIONS as usize);
         for _ in 0..REPETITIONS {
-            runs.push(benchmark_run(&config))
+            runs.push(benchmark_run(&mut optimizer))
         }
 
         let sum_fitness: f64 = runs.iter().map(|r| r.best_specimen.fitness).sum();
@@ -185,32 +201,15 @@ fn collect_benchmarks(schema: &TestSchema) -> Vec<FinalTestResult> {
     results
 }
 
-fn benchmark_run(config: &Config) -> RunResult<ScheduleChromosome> {
-    let chosen_function = if config.nsga2 {
-        evolve_nsga2
-    } else {
-        evolve
-    };
-
-    let mut best_fitness: f64 = 0.0;
-    let mut best_fitness_count: u32 = 0;
+fn benchmark_run(
+    optimizer: &mut Box<dyn Optimizer<ScheduleChromosome>>,
+) -> RunResult<ScheduleChromosome> {
     let mut generations = 0;
 
     let start = Instant::now();
-    let population = chosen_function(generate_population(&config), &config, |population: &[Chromosome], generation: i32| -> bool {
-        if let Some(best) = population.first() {
-            if best_fitness < best.fitness() {
-                best_fitness = best.fitness();
-                best_fitness_count = 0;
-            } else {
-                best_fitness_count += 1;
-            }
-        }
-
-        generations = generation as usize;
-
-        generation == 200 || best_fitness_count == 20
-    });
+    let population = optimizer.optimize(Box::new(SchedulingEvaluator {
+        ..Default::default()
+    }));
     let runtime = start.elapsed().as_secs_f64();
 
     RunResult {
@@ -240,37 +239,6 @@ fn generate_topological_orders(dependencies: &[(u32, u32)], jobs: u32, n: usize)
     }
 
     result
-}
-
-fn test_run(config: &Config, nsga2: bool, name: &str) {
-    let chosen_function = if nsga2 {
-        evolve_nsga2
-    } else {
-        evolve
-    };
-
-    let mut best_fitness: f64 = 0.0;
-    let mut best_fitness_count: u32 = 0;
-
-    let start = Instant::now();
-    let population = chosen_function(generate_population(&config), &config, |population: &[Chromosome], generation: i32| -> bool {
-        if let Some(best) = population.first() {
-            if best_fitness < best.fitness {
-                best_fitness = best.fitness;
-                best_fitness_count = 0;
-            } else {
-                best_fitness_count += 1;
-            }
-        }
-
-        generation == 200 || best_fitness_count == 20
-    });
-    let duration = start.elapsed().as_secs_f64();
-    println!("{}: Took {}", name, format!("{:.2} seconds", duration).bold().green());
-
-    let schedule = visualize_chromsome(population.first().unwrap(), &config);
-    let _visualised = visualize_schedule(&schedule, &config, false, &format!("out-{}.png", name));
-    let _visualised = visualize_schedule(&schedule, &config, true, &format!("out-{}-deps.png", name));
 }
 
 fn main() {
