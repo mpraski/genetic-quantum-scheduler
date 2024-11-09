@@ -2,10 +2,10 @@ use crate::demo_data::{
     dependencies, execution_times, fidelities, initial_waiting_times, topological_sort,
 };
 use crate::genetic_algorithm::{Chromosome, Optimizer};
-use crate::nsga2_optimizer::NSGA2Optimizer;
-use crate::scheduling_optimizer::{
-    Config, GeneticOptimizer, ScheduleChromosome, SchedulingAlgorithm, SchedulingEvaluator,
+use crate::genetic_optimizer::{
+    GeneticOptimizer, QuantumSchedule, SchedulingAlgorithm, SchedulingConfig, SchedulingEvaluator,
 };
+use crate::nsga2_optimizer::NSGA2Optimizer;
 use chrono::Local;
 use csv::Writer;
 use itertools::iproduct;
@@ -20,9 +20,9 @@ use std::time::Instant;
 mod demo_data;
 mod dominance_ord;
 mod genetic_algorithm;
+mod genetic_optimizer;
 mod non_dominated_sort;
 mod nsga2_optimizer;
-mod scheduling_optimizer;
 mod visualization;
 
 #[derive(Debug)]
@@ -129,7 +129,7 @@ fn collect_benchmarks(schema: &TestSchema) -> Vec<FinalTestResult> {
         let selection_size = sel_size - elitism_size;
         let mutation_pairs = (jobs as f64 * mutation_pairs_p).trunc() as usize;
 
-        let config = Config {
+        let config = SchedulingConfig {
             nsga2,
             jobs,
             backends,
@@ -154,7 +154,7 @@ fn collect_benchmarks(schema: &TestSchema) -> Vec<FinalTestResult> {
         let algorithm = Box::new(SchedulingAlgorithm {
             config: config.clone(),
         });
-        let mut optimizer: Box<dyn Optimizer<ScheduleChromosome>> = if nsga2 {
+        let mut optimizer: Box<dyn Optimizer<QuantumSchedule>> = if nsga2 {
             Box::new(NSGA2Optimizer { algorithm })
         } else {
             Box::new(GeneticOptimizer { algorithm })
@@ -202,8 +202,8 @@ fn collect_benchmarks(schema: &TestSchema) -> Vec<FinalTestResult> {
 }
 
 fn benchmark_run(
-    optimizer: &mut Box<dyn Optimizer<ScheduleChromosome>>,
-) -> RunResult<ScheduleChromosome> {
+    optimizer: &mut Box<dyn Optimizer<QuantumSchedule>>,
+) -> RunResult<QuantumSchedule> {
     let mut generations = 0;
 
     let start = Instant::now();

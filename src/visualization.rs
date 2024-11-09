@@ -1,12 +1,12 @@
-use crate::scheduling_optimizer::{Config, ScheduleChromosome};
+use crate::genetic_optimizer::{QuantumSchedule, SchedulingConfig};
 use plotters::prelude::*;
 use plotters::prelude::{Color, Palette99, BLACK, RED, WHITE};
 use plotters::style::full_palette::GREY;
 use std::error::Error;
 
 pub fn visualize_chromsome(
-    chromosome: &ScheduleChromosome,
-    config: &Config,
+    chromosome: &QuantumSchedule,
+    config: &SchedulingConfig,
 ) -> Vec<(u32, u32, u32, u32)> {
     let mut schedule: Vec<(u32, u32, u32, u32)> = Vec::with_capacity(config.jobs as usize);
     let mut job_end_times: Vec<u32> = vec![0; config.jobs as usize];
@@ -48,7 +48,7 @@ pub fn visualize_chromsome(
 
 pub fn visualize_schedule(
     schedule: &[(u32, u32, u32, u32)],
-    config: &Config,
+    config: &SchedulingConfig,
     visualize_deps: bool,
     output_path: &str,
 ) -> Result<(), Box<dyn Error>> {

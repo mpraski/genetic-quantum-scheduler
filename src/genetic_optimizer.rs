@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 
 #[derive(Clone, Debug, Default)]
-pub struct Config {
+pub struct SchedulingConfig {
     pub nsga2: bool,
     pub jobs: u32,
     pub backends: u32,
@@ -34,7 +34,7 @@ pub struct Config {
     pub fidelity_weight: f64,
 }
 
-impl Meta for Config {
+impl Meta for SchedulingConfig {
     fn selection_size(&self) -> usize {
         self.selection_size
     }
@@ -42,12 +42,12 @@ impl Meta for Config {
 
 #[derive(Debug)]
 pub struct SchedulingAlgorithm {
-    pub config: Config,
+    pub config: SchedulingConfig,
 }
 
 #[derive(Debug)]
 pub struct GeneticOptimizer {
-    pub algorithm: Box<dyn Algorithm<Config, ScheduleChromosome>>,
+    pub algorithm: Box<dyn Algorithm<SchedulingConfig, QuantumSchedule>>,
 }
 
 #[derive(Debug, Default)]
@@ -57,8 +57,8 @@ pub struct SchedulingEvaluator {
     pub generations: i32,
 }
 
-impl Evaluator<ScheduleChromosome> for SchedulingEvaluator {
-    fn can_terminate(&mut self, chromosomes: &[ScheduleChromosome], generation: i32) -> bool {
+impl Evaluator<QuantumSchedule> for SchedulingEvaluator {
+    fn can_terminate(&mut self, chromosomes: &[QuantumSchedule], generation: i32) -> bool {
         let mut groups: HashSet<usize> = HashSet::new();
         for chromosome in chromosomes.iter() {
             groups.insert(chromosome.order);
@@ -88,7 +88,7 @@ impl Evaluator<ScheduleChromosome> for SchedulingEvaluator {
     }
 }
 #[derive(Clone, Debug, Default)]
-pub struct ScheduleChromosome {
+pub struct QuantumSchedule {
     pub genes: Vec<(u32, u32)>,
     pub order: usize,
     pub fitness: f64,
@@ -96,12 +96,12 @@ pub struct ScheduleChromosome {
     pub mean_fidelity: f64,
 }
 
-impl Algorithm<Config, ScheduleChromosome> for SchedulingAlgorithm {
-    fn meta(&self) -> &Config {
+impl Algorithm<SchedulingConfig, QuantumSchedule> for SchedulingAlgorithm {
+    fn meta(&self) -> &SchedulingConfig {
         &self.config
     }
 
-    fn generate(&self) -> Vec<ScheduleChromosome> {
+    fn generate(&self) -> Vec<QuantumSchedule> {
         (0..self.config.population_size)
             .into_par_iter()
             .map(|_| {
@@ -117,7 +117,7 @@ impl Algorithm<Config, ScheduleChromosome> for SchedulingAlgorithm {
                     .zip(random_backends)
                     .collect();
 
-                ScheduleChromosome {
+                QuantumSchedule {
                     genes,
                     order,
                     ..Default::default()
@@ -126,7 +126,7 @@ impl Algorithm<Config, ScheduleChromosome> for SchedulingAlgorithm {
             .collect()
     }
 
-    fn evaluate(&self, mut population: Vec<ScheduleChromosome>) -> Vec<ScheduleChromosome> {
+    fn evaluate(&self, mut population: Vec<QuantumSchedule>) -> Vec<QuantumSchedule> {
         population = self.evaluate_only(population);
 
         population.sort_unstable_by(|a, b| {
@@ -138,7 +138,7 @@ impl Algorithm<Config, ScheduleChromosome> for SchedulingAlgorithm {
         population
     }
 
-    fn evaluate_only(&self, mut population: Vec<ScheduleChromosome>) -> Vec<ScheduleChromosome> {
+    fn evaluate_only(&self, mut population: Vec<QuantumSchedule>) -> Vec<QuantumSchedule> {
         population.par_iter_mut().for_each(|chromosome| {
             let mut acc_fidelity: f64 = 0.0;
             let mut max_makespan: u32 = 0;
@@ -199,7 +199,7 @@ impl Algorithm<Config, ScheduleChromosome> for SchedulingAlgorithm {
         population
     }
 
-    fn mutate(&self, mut population: Vec<ScheduleChromosome>) -> Vec<ScheduleChromosome> {
+    fn mutate(&self, mut population: Vec<QuantumSchedule>) -> Vec<QuantumSchedule> {
         population.par_iter_mut().for_each(|chromosome| {
             let mut rng = thread_rng();
 
@@ -339,8 +339,8 @@ impl Algorithm<Config, ScheduleChromosome> for SchedulingAlgorithm {
         population
     }
 
-    fn crossover(&self, parents: &Vec<ScheduleChromosome>) -> Vec<ScheduleChromosome> {
-        let mut groups: HashMap<usize, Vec<&ScheduleChromosome>> = HashMap::new();
+    fn crossover(&self, parents: &Vec<QuantumSchedule>) -> Vec<QuantumSchedule> {
+        let mut groups: HashMap<usize, Vec<&QuantumSchedule>> = HashMap::new();
 
         for chromosome in parents {
             groups
@@ -359,21 +359,21 @@ impl Algorithm<Config, ScheduleChromosome> for SchedulingAlgorithm {
                         let (c1, c2) = perform_two_point_crossover(p1, p2, &self.config);
                         vec![c1, c2]
                     })
-                    .collect::<Vec<ScheduleChromosome>>() // Collect the offspring for this group.
+                    .collect::<Vec<QuantumSchedule>>() // Collect the offspring for this group.
             })
             .collect()
     }
 
-    fn select(&self, chromosomes: &[ScheduleChromosome]) -> Vec<ScheduleChromosome> {
+    fn select(&self, chromosomes: &[QuantumSchedule]) -> Vec<QuantumSchedule> {
         chromosomes[..std::cmp::min(self.config.selection_size, chromosomes.len())].to_vec()
     }
 
-    fn elitism(&self, population: &[ScheduleChromosome]) -> Vec<ScheduleChromosome> {
+    fn elitism(&self, population: &[QuantumSchedule]) -> Vec<QuantumSchedule> {
         population[..std::cmp::min(self.config.elitism_size, population.len())].to_vec()
     }
 }
 
-impl Chromosome for ScheduleChromosome {
+impl Chromosome for QuantumSchedule {
     fn fitness(&self) -> f64 {
         self.fitness
     }
@@ -383,8 +383,8 @@ impl Chromosome for ScheduleChromosome {
     }
 }
 
-impl DominanceOrd for ScheduleChromosome {
-    type T = ScheduleChromosome;
+impl DominanceOrd for QuantumSchedule {
+    type T = QuantumSchedule;
 
     fn dominance_ord(&self, a: &Self::T, b: &Self::T) -> Ordering {
         if a.makespan < b.makespan && a.mean_fidelity >= b.mean_fidelity {
@@ -401,13 +401,10 @@ impl DominanceOrd for ScheduleChromosome {
     }
 }
 
-impl Optimizer<ScheduleChromosome> for GeneticOptimizer {
-    fn optimize(
-        &mut self,
-        mut eval: Box<dyn Evaluator<ScheduleChromosome>>,
-    ) -> Vec<ScheduleChromosome> {
+impl Optimizer<QuantumSchedule> for GeneticOptimizer {
+    fn optimize(&mut self, mut eval: Box<dyn Evaluator<QuantumSchedule>>) -> Vec<QuantumSchedule> {
         let mut generation = 0;
-        let mut population: Vec<ScheduleChromosome> = self.algorithm.generate();
+        let mut population: Vec<QuantumSchedule> = self.algorithm.generate();
 
         loop {
             population = self.algorithm.evaluate(population);
@@ -432,10 +429,10 @@ impl Optimizer<ScheduleChromosome> for GeneticOptimizer {
 }
 
 fn perform_single_point_crossover(
-    parent_1: &ScheduleChromosome,
-    parent_2: &ScheduleChromosome,
-    config: &Config,
-) -> (ScheduleChromosome, ScheduleChromosome) {
+    parent_1: &QuantumSchedule,
+    parent_2: &QuantumSchedule,
+    config: &SchedulingConfig,
+) -> (QuantumSchedule, QuantumSchedule) {
     let crossover_point = thread_rng().gen_range(0..config.jobs as usize);
 
     let mut genes_1 = Vec::with_capacity(config.jobs as usize);
@@ -447,12 +444,12 @@ fn perform_single_point_crossover(
     genes_2.extend_from_slice(&parent_1.genes[crossover_point..]);
 
     (
-        ScheduleChromosome {
+        QuantumSchedule {
             genes: genes_1,
             order: parent_1.order,
             ..Default::default()
         },
-        ScheduleChromosome {
+        QuantumSchedule {
             genes: genes_2,
             order: parent_2.order,
             ..Default::default()
@@ -461,10 +458,10 @@ fn perform_single_point_crossover(
 }
 
 fn perform_two_point_crossover(
-    parent_1: &ScheduleChromosome,
-    parent_2: &ScheduleChromosome,
-    config: &Config,
-) -> (ScheduleChromosome, ScheduleChromosome) {
+    parent_1: &QuantumSchedule,
+    parent_2: &QuantumSchedule,
+    config: &SchedulingConfig,
+) -> (QuantumSchedule, QuantumSchedule) {
     let mut rng = thread_rng();
 
     let crossover_point_1 = rng.gen_range(0..config.jobs as usize);
@@ -481,12 +478,12 @@ fn perform_two_point_crossover(
     genes_2.extend_from_slice(&parent_2.genes[crossover_point_2..]);
 
     (
-        ScheduleChromosome {
+        QuantumSchedule {
             genes: genes_1,
             order: parent_1.order,
             ..Default::default()
         },
-        ScheduleChromosome {
+        QuantumSchedule {
             genes: genes_2,
             order: parent_2.order,
             ..Default::default()

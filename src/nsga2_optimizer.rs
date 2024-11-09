@@ -1,14 +1,14 @@
 use crate::genetic_algorithm::{Algorithm, Evaluator, Optimizer};
+use crate::genetic_optimizer::{QuantumSchedule, SchedulingConfig};
 use crate::non_dominated_sort::{
     assign_crowding_distance, non_dominated_sort, AssignedCrowdingDistance,
 };
-use crate::scheduling_optimizer::{Config, ScheduleChromosome};
 use std::cmp::Ordering;
 use std::marker::PhantomData;
 
 #[derive(Debug)]
 pub struct NSGA2Optimizer {
-    pub algorithm: Box<dyn Algorithm<Config, ScheduleChromosome>>,
+    pub algorithm: Box<dyn Algorithm<SchedulingConfig, QuantumSchedule>>,
 }
 
 pub trait Objective {
@@ -49,7 +49,7 @@ struct MakespanObjective;
 struct MeanFidelityObjective;
 
 impl Objective for MakespanObjective {
-    type Solution = ScheduleChromosome;
+    type Solution = QuantumSchedule;
     type Distance = f64;
 
     fn total_order(&self, a: &Self::Solution, b: &Self::Solution) -> Ordering {
@@ -62,7 +62,7 @@ impl Objective for MakespanObjective {
 }
 
 impl Objective for MeanFidelityObjective {
-    type Solution = ScheduleChromosome;
+    type Solution = QuantumSchedule;
     type Distance = f64;
 
     fn total_order(&self, a: &Self::Solution, b: &Self::Solution) -> Ordering {
@@ -122,13 +122,10 @@ fn select_and_rank<'a, S: 'a>(
     result
 }
 
-impl Optimizer<ScheduleChromosome> for NSGA2Optimizer {
-    fn optimize(
-        &mut self,
-        mut eval: Box<dyn Evaluator<ScheduleChromosome>>,
-    ) -> Vec<ScheduleChromosome> {
+impl Optimizer<QuantumSchedule> for NSGA2Optimizer {
+    fn optimize(&mut self, mut eval: Box<dyn Evaluator<QuantumSchedule>>) -> Vec<QuantumSchedule> {
         let mut generation = 0;
-        let mut population: Vec<ScheduleChromosome> = self.algorithm.generate();
+        let mut population: Vec<QuantumSchedule> = self.algorithm.generate();
         let mo = MultiObjective::new(&[&MakespanObjective, &MeanFidelityObjective]);
 
         loop {
