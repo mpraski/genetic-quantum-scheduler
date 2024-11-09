@@ -86,6 +86,10 @@ impl Evaluator<QuantumSchedule> for SchedulingEvaluator {
 
         generation == 200 || self.best_fitness_count == 20
     }
+
+    fn generation(&self) -> i32 {
+        self.generations
+    }
 }
 #[derive(Clone, Debug, Default)]
 pub struct QuantumSchedule {
@@ -402,7 +406,7 @@ impl DominanceOrd for QuantumSchedule {
 }
 
 impl Optimizer<QuantumSchedule> for GeneticOptimizer {
-    fn optimize(&mut self, mut eval: Box<dyn Evaluator<QuantumSchedule>>) -> Vec<QuantumSchedule> {
+    fn optimize(&mut self, eval: &mut Box<dyn Evaluator<QuantumSchedule>>) -> Vec<QuantumSchedule> {
         let mut generation = 0;
         let mut population: Vec<QuantumSchedule> = self.algorithm.generate();
 

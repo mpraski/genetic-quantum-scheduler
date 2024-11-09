@@ -1,7 +1,7 @@
 use crate::demo_data::{
     dependencies, execution_times, fidelities, initial_waiting_times, topological_sort,
 };
-use crate::genetic_algorithm::{Chromosome, Optimizer};
+use crate::genetic_algorithm::{Chromosome, Evaluator, Optimizer};
 use crate::genetic_optimizer::{
     GeneticOptimizer, QuantumSchedule, SchedulingAlgorithm, SchedulingConfig, SchedulingEvaluator,
 };
@@ -67,7 +67,7 @@ pub struct FinalTestResult {
 #[derive(Debug)]
 pub struct RunResult<C: Chromosome> {
     runtime: f64,
-    generations: usize,
+    generations: i32,
     best_specimen: C,
 }
 
@@ -169,7 +169,7 @@ fn collect_benchmarks(schema: &TestSchema) -> Vec<FinalTestResult> {
         let sum_makespan: u32 = runs.iter().map(|r| r.best_specimen.makespan).sum();
         let sum_fidelity: f64 = runs.iter().map(|r| r.best_specimen.mean_fidelity).sum();
         let sum_runtime: f64 = runs.iter().map(|r| r.runtime).sum();
-        let sum_generations: usize = runs.iter().map(|r| r.generations).sum();
+        let sum_generations: i32 = runs.iter().map(|r| r.generations).sum();
 
         results.push(FinalTestResult {
             nsga2: config.nsga2,
@@ -204,17 +204,17 @@ fn collect_benchmarks(schema: &TestSchema) -> Vec<FinalTestResult> {
 fn benchmark_run(
     optimizer: &mut Box<dyn Optimizer<QuantumSchedule>>,
 ) -> RunResult<QuantumSchedule> {
-    let mut generations = 0;
+    let mut evaluator: Box<dyn Evaluator<QuantumSchedule>> = Box::new(SchedulingEvaluator {
+        ..Default::default()
+    });
 
     let start = Instant::now();
-    let population = optimizer.optimize(Box::new(SchedulingEvaluator {
-        ..Default::default()
-    }));
+    let population = optimizer.optimize(&mut evaluator);
     let runtime = start.elapsed().as_secs_f64();
 
     RunResult {
         runtime,
-        generations,
+        generations: evaluator.generation(),
         best_specimen: population.first().unwrap().clone(),
     }
 }

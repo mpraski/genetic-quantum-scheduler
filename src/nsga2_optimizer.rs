@@ -123,7 +123,7 @@ fn select_and_rank<'a, S: 'a>(
 }
 
 impl Optimizer<QuantumSchedule> for NSGA2Optimizer {
-    fn optimize(&mut self, mut eval: Box<dyn Evaluator<QuantumSchedule>>) -> Vec<QuantumSchedule> {
+    fn optimize(&mut self, eval: &mut Box<dyn Evaluator<QuantumSchedule>>) -> Vec<QuantumSchedule> {
         let mut generation = 0;
         let mut population: Vec<QuantumSchedule> = self.algorithm.generate();
         let mo = MultiObjective::new(&[&MakespanObjective, &MeanFidelityObjective]);

@@ -15,11 +15,12 @@ pub trait Meta: Send + Sync + Debug + Clone {
 // This trait represents the stopping condition of the algorithm
 pub trait Evaluator<C: Chromosome>: Send + Sync + Debug {
     fn can_terminate(&mut self, chromosomes: &[C], generation: i32) -> bool;
+    fn generation(&self) -> i32;
 }
 
 // This trait encapsulates the optimizer logic
 pub trait Optimizer<C: Chromosome>: Send + Sync + Debug {
-    fn optimize(&mut self, eval: Box<dyn Evaluator<C>>) -> Vec<C>;
+    fn optimize(&mut self, eval: &mut Box<dyn Evaluator<C>>) -> Vec<C>;
 }
 
 // This trait encapsulates the underlying genetic (or a variation thereof)
