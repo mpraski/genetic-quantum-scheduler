@@ -30,8 +30,7 @@ pub struct SchedulingConfig {
     pub gap_threshold: usize,
     pub max_utilized_backends: usize,
     pub max_underutilized_backends: usize,
-    pub makespan_weight: f64,
-    pub fidelity_weight: f64,
+    pub multi_objective_ratio: f64,
 }
 
 impl Meta for SchedulingConfig {
@@ -55,6 +54,7 @@ pub struct SchedulingEvaluator {
     pub best_fitness: f64,
     pub best_fitness_count: u32,
     pub generations: i32,
+    pub print: bool,
 }
 
 impl Evaluator<QuantumSchedule> for SchedulingEvaluator {
@@ -65,14 +65,16 @@ impl Evaluator<QuantumSchedule> for SchedulingEvaluator {
         }
 
         if let Some(best) = chromosomes.first() {
-            println!(
-                "{} - Best fitness: {:.8}, makespan: {}, mean fidelity: {}, groups: {}",
-                format!("Generation {:3}", generation).bold().red(),
-                best.fitness,
-                best.makespan,
-                best.mean_fidelity,
-                groups.len(),
-            );
+            if self.print {
+                println!(
+                    "{} - Best fitness: {:.8}, makespan: {}, mean fidelity: {}, groups: {}",
+                    format!("Generation {:3}", generation).bold().red(),
+                    best.fitness,
+                    best.makespan,
+                    best.mean_fidelity,
+                    groups.len(),
+                );
+            }
 
             if self.best_fitness < best.fitness() {
                 self.best_fitness = best.fitness();
@@ -196,8 +198,8 @@ impl Algorithm<SchedulingConfig, QuantumSchedule> for SchedulingAlgorithm {
 
             chromosome.makespan = max_makespan;
             chromosome.mean_fidelity = acc_fidelity / self.config.jobs as f64;
-            chromosome.fitness = self.config.makespan_weight * (1.0 / max_makespan as f64)
-                + self.config.fidelity_weight * mean_fidelity;
+            chromosome.fitness = self.config.multi_objective_ratio * (1.0 / max_makespan as f64)
+                + (1.0 - self.config.multi_objective_ratio) * mean_fidelity;
         });
 
         population
